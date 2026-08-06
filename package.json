@@ -1,0 +1,85 @@
+{
+  "name": "ai-code-diff-assistant",
+  "displayName": "AI Code Diff Assistant",
+  "description": "VS Code extension for efficient AI playground prompt workflow & incremental diff patching.",
+  "version": "0.0.5",
+  "publisher": "mamadfakoor",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:aiDiffAssistant.copyContext",
+    "onCommand:aiDiffAssistant.copyStructure",
+    "onCommand:aiDiffAssistant.applyPatch"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiDiffAssistant.copyContext",
+        "title": "AI Assistant: Copy Project Context & System Prompt"
+      },
+      {
+        "command": "aiDiffAssistant.copyStructure",
+        "title": "AI Assistant: Copy Project Structure Only"
+      },
+      {
+        "command": "aiDiffAssistant.applyPatch",
+        "title": "AI Assistant: Apply AI Code Response"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ai-diff-assistant-view",
+          "title": "AI Diff Assistant",
+          "icon": "$(sparkle)"
+        }
+      ]
+    },
+    "views": {
+      "ai-diff-assistant-view": [
+        {
+          "type": "webview",
+          "id": "aiDiffAssistant.sidebarView",
+          "name": "AI Diff Assistant"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AI Diff Assistant",
+      "properties": {
+        "aiDiffAssistant.excludeFolders": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Folders excluded from the exported project context. When non-empty, this list **replaces** the built-in defaults (`node_modules`, `.git`, `dist`, `out`, …). Example: `[\"node_modules\", \".git\", \"tmp\"]`."
+        },
+        "aiDiffAssistant.excludeFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "File globs excluded from the exported project context (supports `*` and `?`). When non-empty, this list **replaces** the built-in defaults (`*.log`, `*.png`, `package-lock.json`, …). Example: `[\"*.log\", \"*.png\", \"secrets.json\"]`."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.x",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  }
+}
