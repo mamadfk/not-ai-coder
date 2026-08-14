@@ -7,9 +7,6 @@ export interface FolderOption {
     selected: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Default ignore lists (overridable via settings.json — see package.json).
-// ---------------------------------------------------------------------------
 const DEFAULT_EXCLUDE_FOLDERS = [
     'node_modules', '.git', '.vscode', '.idea', '.vscode-test',
     'dist', 'build', 'out', '.next', '.nuxt', '.cache',
@@ -26,7 +23,6 @@ const DEFAULT_EXCLUDE_FILE_GLOBS = [
     '*.mp3', '*.mp4', '*.mov', '*.avi', '*.mkv'
 ];
 
-// Binary file extensions (double safety net beyond the glob list).
 const BINARY_EXTENSIONS = new Set([
     '.png', '.jpg', '.jpeg', '.gif', '.ico', '.bmp', '.webp', '.tiff',
     '.pdf', '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2',
@@ -37,9 +33,6 @@ const BINARY_EXTENSIONS = new Set([
 
 const MAX_FILE_SIZE = 500 * 1024; // 500 KB
 
-// ---------------------------------------------------------------------------
-// Settings
-// ---------------------------------------------------------------------------
 interface ExportSettings {
     excludeFolders: Set<string>;
     excludeFilePatterns: string[];
@@ -50,8 +43,6 @@ function loadSettings(): ExportSettings {
     const userFolders = cfg.get<string[]>('excludeFolders', []);
     const userFiles = cfg.get<string[]>('excludeFiles', []);
 
-    // User-supplied lists fully replace the defaults when non-empty,
-    // otherwise the sensible built-in defaults apply.
     return {
         excludeFolders: new Set(
             userFolders.length > 0 ? userFolders : DEFAULT_EXCLUDE_FOLDERS
@@ -60,7 +51,6 @@ function loadSettings(): ExportSettings {
     };
 }
 
-/** Minimal glob matcher supporting `*` and `?`. */
 function globMatch(pattern: string, name: string): boolean {
     const regex = new RegExp(
         '^' +
@@ -82,8 +72,6 @@ function isBinaryFile(filePath: string): boolean {
     if (BINARY_EXTENSIONS.has(ext)) {
         return true;
     }
-    // Sniff for a NUL byte in the first chunk (catches files with no
-    // recognizable extension but binary content).
     try {
         const fd = fs.openSync(filePath, 'r');
         const buf = Buffer.alloc(2048);
@@ -95,10 +83,6 @@ function isBinaryFile(filePath: string): boolean {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Folder listing (for QuickPick / sidebar)
-// ---------------------------------------------------------------------------
-/** Returns the names of the immediate sub-directories of `rootPath`. */
 export async function getRootFolderList(rootPath: string): Promise<string[]> {
     try {
         const items = fs.readdirSync(rootPath);
@@ -110,7 +94,7 @@ export async function getRootFolderList(rootPath: string): Promise<string[]> {
                     folders.push(item);
                 }
             } catch {
-                // ignore unreadable entries
+                // ignore
             }
         }
         return folders.sort();
@@ -131,40 +115,45 @@ export async function generateProjectContext(
     const treeStructure = buildTreeString(rootPath, files);
 
     let context = `==================================================\n`;
-    context += `   AI SYSTEM PROMPT & INSTRUCTIONS (قالب دستور العمل)\n`;
+    context += `   AI SYSTEM PROMPT & INSTRUCTIONS (دستورالعمل جامع هوش مصنوعی)\n`;
     context += `==================================================\n\n`;
-    context += `شما یک دستیار برنامه نویسی هوشمند هستید. لطفا هنگام پاسخ دادن به درخواست ها و ارائه تغییرات کد، قوانین زیر را دقیقا رعایت کنید:\n\n`;
-    context += `1. **کاهش مصرف توکن**: نیازی نیست کل فایل ها یا کل پروژه را در پاسخ خود تکرار کنید. فقط بخش هایی که باید تغییر کنند یا اضافه شوند را ارسال کنید.\n\n`;
-    context += `2. **مشخص کردن مسیر فایل**: هر بلوک کد باید حتما دارای مسیر دقیق فایل باشد. مسیر را می توانید در عنوان بلوک کد (مثلا \`\`\`typescript:src/index.ts) یا در خط اول بلوک کد مشخص کنید. کامنت مشخص‌کننده مسیر باید با سینتکس کامنت همان زبان نوشته شود:\n`;
-    context += `   - جاوااسکریپت/تی‌اس/سی‌شارپ/...:  \`// FILE: src/path/to/file.ext\`\n`;
-    context += `   - پایتون/روبی/شل:                  \`# FILE: src/path/to/file.py\`\n`;
-    context += `   - CSS/SCSS:                         \`/* FILE: src/style.css */\`\n`;
-    context += `   - HTML/XML/Markdown/Vue:            \`<!-- FILE: index.html -->\`\n\n`;
-    context += `3. **علامت گذاری تغییرات (Diff Markers)** — سینتکس کامنت باید با نوع فایل همخوانی داشته باشد:\n`;
-    context += `   - **new**: کدهای جدیدی که باید اضافه شوند. قبل از آن‌ها کامنت new قرار دهید. مثال HTML: \`<!-- new -->\`، مثال CSS: \`/* new */\`، مثال JS: \`// new\`، مثال Python: \`# new\`.\n`;
-    context += `   - **change**: کدهایی که جایگزین می‌شوند. قبل از بلوکِ جایگزین کامنت change بگذارید و **کل بلوک جدید (مثلاً کل تابع/متد/المنت) را بفرستید**. پلاگین به‌صورت هوشمند کل scope قدیمی (تمام بدنه‌ی تابع/کلاس/المنت) را حذف و با بلوک جدید جایگزین می‌کند — پس نیازی به remove جداگانه برای خطوط قدیمی نیست.\n`;
-    context += `   - **remove**: اگر یک خط یا متد باید حذف شود، از \`// remove: [کد قبلی]\` (یا معادل همان‌زبان: \`# remove:\`، \`/* remove: */\`، \`<!-- remove: -->\`) استفاده کنید.\n`;
-    context += `   - **NEW FILE**: اگر فایل کاملاً جدید است، در انتهای مسیر فایل کلمه \`(NEW FILE)\` یا در خط اول \`// NEW FILE\` (با سینتکس مناسب) قید شود.\n\n`;
-    context += `4. **قالب ارسال پاسخ** — نمونه برای چند زبان:\n\n`;
-    context += `\`\`\`typescript\n`;
-    context += `// FILE: src/example.ts\n`;
-    context += `// change\n`;
-    context += `// کل تابع قدیمی جایگزین می‌شود؛ فقط بلوک کامل جدید را بفرستید:\n`;
-    context += `function calc(x: number) {\n`;
-    context += `    return x * 2;\n`;
-    context += `}\n\n`;
-    context += `// new\n`;
-    context += `const NEW_CONST = 42;\n`;
+    context += `شما یک مهندس ارشد برنامه‌نویسی و متخصص توسعه نرم‌افزار هستید. سورس‌کد پروژه در ادامه آورده شده و تمامی خطوط با شماره خط مشخص شده‌اند.\n\n`;
+    context += `🎯 **هدف اصلی**: ارائه کدهای کاملاً تمیز، دقیق، ساختاریافته و قابل پچ روی پروژه.\n`;
+    context += `⚠️ **نکته بسیار مهم**: هدف ما صرفه‌جویی بی‌مورد در توکن نیست! هرگز به خاطر کاهش توکن، ساختار پاسخ، بلوک‌های کد یا مشخصات فایل‌ها را خراب نکنید یا در یک خط فشرده نسازید.\n\n`;
+    context += `📌 **قوانین اجباری فرمت خروجی (۱۰۰٪ الزام‌آور)**:\n\n`;
+    context += `۱. **بلوک کد مجزا برای هر فایل**: تغییرات هر فایل را حتماً در یک بلوک کد مارک‌داون مجزا (با \`\`\`زبان) قرار دهید.\n\n`;
+    context += `۲. **خط اول (مسیر کامل فایل)**: اولین خط داخل بلوک کد حتماً باید مسیر دقیق فایل باشد:\n`;
+    context += `   - دارت/فلاتر/جاوااسکریپت:  \`// FILE: lib/screens/home_screen.dart\`\n`;
+    context += `   - یامل/پایتون/شل:          \`# FILE: pubspec.yaml\`\n`;
+    context += `   - اکس‌ام‌ال/ایچ‌تی‌ام‌ال:     \`<!-- FILE: android/app/src/main/AndroidManifest.xml -->\`\n`;
+    context += `   - سی‌اس‌اس:                \`/* FILE: assets/styles.css */\`\n\n`;
+    context += `۳. **خط دوم (دستور تغییر و شماره خط)**: دومین خط حتماً باید دستور تغییر باشد:\n`;
+    context += `   - برای جایگزینی خطوط:       \`// REPLACE: 15-20\` (یا \`// REPLACE: 12\` برای یک خط)\n`;
+    context += `   - برای درج کد جدید:         \`// INSERT_AFTER: 45\` (یا \`// INSERT_AFTER: 0\` برای ابتدای فایل)\n`;
+    context += `   - برای حذف خطوط:            \`// DELETE: 8-10\`\n`;
+    context += `   - برای فایل جدید:           \`// NEW FILE\`\n\n`;
+    context += `۴. **شروع کد از خط سوم**: کدها باید حتماً از خط بعدی شروع شوند. **هرگز مسیر فایل، مارکر تغییر و کد اصلی را در یک خط ننویسید!**\n\n`;
+    context += `۵. **عدم تکرار شماره خط**: در کدهای جدیدی که می‌نویسید شماره خط قرار ندهید.\n\n`;
+    context += `--------------------------------------------------\n`;
+    context += `📌 **نمونه‌های استاندارد پاسخ (دقیقاً طبق این الگوها عمل کنید)**:\n\n`;
+    context += `مثال ۱ (فایل Dart در فلاتر):\n`;
+    context += `\`\`\`dart\n`;
+    context += `// FILE: lib/screens/home_screen.dart\n`;
+    context += `// REPLACE: 15-18\n`;
+    context += `class HomeScreen extends StatefulWidget {\n`;
+    context += `  const HomeScreen({super.key});\n`;
     context += `\`\`\`\n\n`;
-    context += `\`\`\`html\n`;
-    context += `<!-- FILE: index.html -->\n`;
-    context += `<!-- change -->\n`;
-    context += `<div class="new-card">محتوای جدید</div>\n`;
+    context += `مثال ۲ (فایل YAML کانفیگ فلاتر):\n`;
+    context += `\`\`\`yaml\n`;
+    context += `# FILE: pubspec.yaml\n`;
+    context += `# INSERT_AFTER: 20\n`;
+    context += `  flutter_bloc: ^8.1.3\n`;
     context += `\`\`\`\n\n`;
-    context += `\`\`\`css\n`;
-    context += `/* FILE: src/style.css */\n`;
-    context += `/* new */\n`;
-    context += `.new-card { color: red; }\n`;
+    context += `مثال ۳ (فایل Android XML در فلاتر):\n`;
+    context += `\`\`\`xml\n`;
+    context += `<!-- FILE: android/app/src/main/AndroidManifest.xml -->\n`;
+    context += `<!-- REPLACE: 10-12 -->\n`;
+    context += `<application android:label="MyFlutterApp">\n`;
     context += `\`\`\`\n\n`;
 
     context += `==================================================\n`;
@@ -173,7 +162,7 @@ export async function generateProjectContext(
     context += treeStructure + `\n\n`;
 
     context += `==================================================\n`;
-    context += `   PROJECT SOURCE FILES (محتوای فایل‌های پروژه)\n`;
+    context += `   PROJECT SOURCE FILES (محتوای فایل‌های پروژه با شماره خط)\n`;
     context += `==================================================\n\n`;
 
     appendFileContents(rootPath, files, ctx => { context += ctx; });
@@ -190,12 +179,12 @@ export async function generateProjectStructureAndSource(
     const treeStructure = buildTreeString(rootPath, files);
 
     let context = `==================================================\n`;
-    context += `   PROJECT STRUCTURE & SOURCE FILES (ساختار و سورس کد پروژه)\n`;
+    context += `   PROJECT STRUCTURE & SOURCE FILES (ساختار و سورس کد)\n`;
     context += `==================================================\n\n`;
     context += treeStructure + `\n\n`;
 
     context += `==================================================\n`;
-    context += `   PROJECT SOURCE FILES (محتوای فایل‌های پروژه)\n`;
+    context += `   PROJECT SOURCE FILES (محتوای فایل‌ها همراه با شماره خط)\n`;
     context += `==================================================\n\n`;
 
     appendFileContents(rootPath, files, ctx => { context += ctx; });
@@ -215,15 +204,10 @@ export async function generateProjectStructureOnly(
     context += `   PROJECT STRUCTURE ONLY (فقط ساختار پروژه)\n`;
     context += `==================================================\n\n`;
     context += treeStructure + `\n\n`;
-    context += `توضیح: این ساختار درختی فایل‌های پروژه است. کدهای سورس داخل فایل‌ها ارسال نشده است.\n`;
 
     return context;
 }
 
-// ---------------------------------------------------------------------------
-// Shared file walker + helpers
-// ---------------------------------------------------------------------------
-/** Writes each file's content into the supplied `append` callback. */
 function appendFileContents(
     rootPath: string,
     files: string[],
@@ -234,9 +218,13 @@ function appendFileContents(
         try {
             const content = fs.readFileSync(file, 'utf-8');
             append(`--- FILE: ${relPath} ---\n`);
-            append(content + `\n\n`);
+            const lines = content.split(/\r?\n/);
+            lines.forEach((line, index) => {
+                append(`${index + 1} | ${line}\n`);
+            });
+            append(`\n`);
         } catch {
-            // skip unreadable files
+            // skip
         }
     }
 }
@@ -256,7 +244,6 @@ async function getWorkspaceFiles(
     }
 
     for (const item of list) {
-        // Skip excluded folders (only by top-level name) — works for any depth.
         const fullPath = path.join(dir, item);
         const relItemPath = currentRelPath ? `${currentRelPath}/${item}` : item;
 
@@ -266,17 +253,12 @@ async function getWorkspaceFiles(
                 if (settings.excludeFolders.has(item)) {
                     continue;
                 }
-
-                // At root level, honour the user's folder selection.
                 if (currentRelPath === '' && includedFolders !== null && !includedFolders.includes(item)) {
                     continue;
                 }
-
                 const subFiles = await getWorkspaceFiles(fullPath, includedFolders, settings, relItemPath);
                 results = results.concat(subFiles);
             } else {
-                // Root-level files are always considered (subject to filters)
-                // when no folder selection is active.
                 if (isFileExcluded(item, settings)) {
                     continue;
                 }
@@ -289,23 +271,12 @@ async function getWorkspaceFiles(
                 results.push(fullPath);
             }
         } catch {
-            // ignore access errors
+            // ignore
         }
     }
     return results;
 }
 
-/**
- * Builds a proper ASCII tree:
- *
- *   .
- *   ├── src
- *   │   └── index.ts
- *   └── package.json
- *
- * The previous version flattened everything under the root with a broken
- * depth calculation; this rebuilds the real hierarchy.
- */
 type TreeNode = { name: string; children: Map<string, TreeNode> };
 
 function buildTreeString(rootPath: string, files: string[]): string {
@@ -335,7 +306,6 @@ function renderNode(node: TreeNode, prefix: string, lines: string[]): void {
         a.name.localeCompare(b.name, 'en', { numeric: true })
     );
 
-    // Folders first (those that have children), then files — both alphabetical.
     entries.sort((a, b) => {
         const aIsDir = a.children.size > 0;
         const bIsDir = b.children.size > 0;

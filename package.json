@@ -2,7 +2,7 @@
   "name": "ai-code-diff-assistant",
   "displayName": "AI Code Diff Assistant",
   "description": "VS Code extension for efficient AI playground prompt workflow & incremental diff patching.",
-  "version": "0.0.5",
+  "version": "0.0.8",
   "publisher": "mamadfakoor",
   "license": "MIT",
   "engines": {
@@ -78,7 +78,7 @@
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
-    "@types/node": "^18.x",
+    "@types/node": "^18.19.130",
     "@types/vscode": "^1.80.0",
     "typescript": "^5.0.0"
   }
