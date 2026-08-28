@@ -35,51 +35,16 @@ function sanitizeFilePath(rawPath: string): string {
         .trim();
 }
 
-function splitInlineMarkers(rawText: string): string {
-    const rawLines = rawText.split(/\r?\n/);
-    const result: string[] = [];
-
-    const markerRegex = /(?:(?:\/\*|\/\/|<!--|#)?\s*(?:FILE|File|file)\s*:\s*[^\/\*\s]+\.[a-zA-Z0-9]+(?:\s*\*\/|\s*-->|\s*\/)?)|(?:(?:\/\*|\/\/|<!--|#)?\s*(?:REPLACE|CHANGE|INSERT_AFTER|INSERT|ADD_AFTER|INSERT_BEFORE|ADD_BEFORE|DELETE|REMOVE)\s*:\s*\d+(?:\s*-\s*\d+)?(?:\s*\*\/|\s*-->|\s*\/)?)/gi;
-
-    for (const rawLine of rawLines) {
-        const line = rawLine.trim();
-        if (!line) {
-            result.push('');
-            continue;
-        }
-
-        let lastIndex = 0;
-        let match: RegExpExecArray | null;
-        let foundAnyMarker = false;
-
-        markerRegex.lastIndex = 0;
-
-        while ((match = markerRegex.exec(line)) !== null) {
-            foundAnyMarker = true;
-            const before = line.substring(lastIndex, match.index).trim();
-            if (before) {
-                result.push(before);
-            }
-            result.push(match[0].trim());
-            lastIndex = markerRegex.lastIndex;
-        }
-
-        if (foundAnyMarker) {
-            const after = line.substring(lastIndex).trim();
-            if (after) {
-                result.push(after);
-            }
-        } else {
-            result.push(rawLine);
-        }
-    }
-
-    return result.join('\n');
+function sanitizeLinePrefix(line: string): string {
+    return line.replace(/^\s*\d+\s*\|\s?/, '');
 }
 
 function parseComment(line: string): string | null {
     const trimmed = line.trim();
     let m: RegExpMatchArray | null;
+
+    m = trimmed.match(/^---\s*(?:FILE:)?\s*([\s\S]*?)\s*---$/i);
+    if (m) return 'FILE: ' + m[1].trim();
 
     m = trimmed.match(/^<!--\s*([\s\S]*?)(?:-->)?\s*$/);
     if (m) return m[1].trim();
@@ -149,174 +114,42 @@ function isMetadataMarker(line: string): boolean {
     return m !== null && m.type === 'file' && !m.startLine;
 }
 
-export async function parseAndApplyAiResponse(
-    aiResponse: string,
-    workspaceRoot: string
-): Promise<{ successCount: number; errors: string[] }> {
-    const normalizedResponse = splitInlineMarkers(aiResponse);
-    const blocks = extractCodeBlocks(normalizedResponse);
-    const errors: string[] = [];
-    let successCount = 0;
+/**
+ * جستجوی هوشمند و بدون خطای لنگر (Anchor Finder)
+ * تنها در صورتی جابجا می‌شود که خط جدید شامل شناسه خاص (مثل function یا class) باشد.
+ */
+function findSafeAnchorLine(currentLines: string[], targetLine: number, patchLines: string[]): number {
+    if (patchLines.length === 0) return targetLine;
 
-    for (const block of blocks) {
-        try {
-            let targetPath = sanitizeFilePath(block.filePath);
+    // انتخاب خطی که بیش از ۸ کاراکتر دارد و فقط آکولاد یا کامنت نیست
+    const signatureLine = patchLines.find(l => {
+        const t = l.trim();
+        return t.length > 8 && !/^[\{\}\(\)\<\>\/\*\#\;\,\s]+$/.test(t);
+    })?.trim();
 
-            if (!targetPath) {
-                if (vscode.window.activeTextEditor) {
-                    targetPath = path.relative(workspaceRoot, vscode.window.activeTextEditor.document.fileName);
-                } else {
-                    errors.push('مسیر فایل مشخص نشده است. لطفاً مطمئن شوید مدل // FILE: path را ارائه داده است.');
-                    continue;
-                }
-            }
+    if (!signatureLine) return targetLine;
 
-            const absolutePath = path.isAbsolute(targetPath)
-                ? path.resolve(targetPath)
-                : path.resolve(workspaceRoot, targetPath);
-
-            if (!isInsideWorkspace(absolutePath, workspaceRoot)) {
-                errors.push(`مسیر فایل خارج از پروژه است و رد شد: ${targetPath}`);
-                continue;
-            }
-
-            await applyPatchToFile(absolutePath, block.content, block.isNewFile);
-            successCount++;
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            errors.push(`خطا در اعمال پچ روی ${block.filePath || '(نامشخص)'}: ${msg}`);
+    const baseIndex = targetLine - 1;
+    if (baseIndex >= 0 && baseIndex < currentLines.length) {
+        if (currentLines[baseIndex].trim() === signatureLine) {
+            return targetLine;
         }
     }
 
-    return { successCount, errors };
-}
-
-function isInsideWorkspace(targetPath: string, workspaceRoot: string): boolean {
-    const resolvedTarget = path.resolve(targetPath);
-    const resolvedRoot = path.resolve(workspaceRoot);
-    const rel = path.relative(resolvedRoot, resolvedTarget);
-    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
-function extractCodeBlocks(text: string): CodeBlockPatch[] {
-    const blocks: CodeBlockPatch[] = [];
-    const blockRegex = /```([^\n]*)\n([\s\S]*?)```/g;
-    let match: RegExpExecArray | null;
-
-    while ((match = blockRegex.exec(text)) !== null) {
-        const header = match[1].trim();
-        const code = match[2];
-
-        let filePath = '';
-        let isNewFile = false;
-
-        if (header.includes(':')) {
-            const parts = header.split(':');
-            if (parts.length >= 2 && (parts[1].includes('/') || parts[1].includes('.') || parts[1].includes('\\'))) {
-                filePath = sanitizeFilePath(parts.slice(1).join(':'));
-            }
-        } else if (header.includes('/') || header.includes('.') || header.includes('\\')) {
-            filePath = sanitizeFilePath(header);
+    // جستجوی محدود در شعاع ۳ خط برای جلوگیری از پرش‌های اشتباه
+    const searchRadius = 4;
+    for (let offset = 1; offset <= searchRadius; offset++) {
+        const downIdx = baseIndex + offset;
+        if (downIdx < currentLines.length && currentLines[downIdx].trim() === signatureLine) {
+            return downIdx + 1;
         }
-
-        if (!filePath) {
-            for (const line of code.split(/\r?\n/)) {
-                const marker = markerOf(line);
-                if (marker && marker.payload) {
-                    filePath = sanitizeFilePath(marker.payload);
-                    break;
-                }
-            }
-        }
-
-        if (/NEW\s+FILE/i.test(code) || /NEW\s+FILE/i.test(header)) {
-            isNewFile = true;
-        }
-
-        blocks.push({ filePath, content: code, isNewFile });
-    }
-
-    // Fallback if no ``` code fences used
-    if (blocks.length === 0) {
-        const lines = text.split(/\r?\n/);
-        let currentPath = '';
-        let currentIsNew = false;
-        let currentLines: string[] = [];
-
-        for (const line of lines) {
-            const marker = markerOf(line);
-            const foundPath = marker?.payload;
-
-            if (foundPath) {
-                const cleanPath = sanitizeFilePath(foundPath);
-                if (cleanPath && cleanPath !== currentPath) {
-                    if (currentPath && currentLines.length > 0) {
-                        blocks.push({
-                            filePath: currentPath,
-                            content: currentLines.join('\n'),
-                            isNewFile: currentIsNew
-                        });
-                    }
-                    currentPath = cleanPath;
-                    currentIsNew = /NEW\s+FILE/i.test(line);
-                    currentLines = [];
-                }
-            }
-
-            if (currentPath) {
-                currentLines.push(line);
-            }
-        }
-
-        if (currentPath && currentLines.length > 0) {
-            blocks.push({
-                filePath: currentPath,
-                content: currentLines.join('\n'),
-                isNewFile: currentIsNew
-            });
+        const upIdx = baseIndex - offset;
+        if (upIdx >= 0 && currentLines[upIdx].trim() === signatureLine) {
+            return upIdx + 1;
         }
     }
 
-    return blocks;
-}
-
-async function applyPatchToFile(filePath: string, patchContent: string, isNewFile: boolean): Promise<void> {
-    const fileExists = fs.existsSync(filePath);
-    const rawLines = patchContent.split(/\r?\n/);
-
-    const lines = rawLines.filter(l => !isMetadataMarker(l));
-
-    if (!fileExists || isNewFile) {
-        const cleanContent = lines
-            .filter(l => markerOf(l) === null)
-            .map(sanitizeLinePrefix)
-            .join('\n');
-        await writeFullFile(filePath, cleanContent);
-        return;
-    }
-
-    let currentContent = '';
-    try {
-        currentContent = fs.readFileSync(filePath, 'utf-8');
-    } catch {
-        currentContent = '';
-    }
-    const currentLines = currentContent.split(/\r?\n/);
-
-    const operations = parseLineOperations(lines);
-
-    if (operations.length === 0) {
-        // If no line operations, write full file content safely
-        const cleanContent = lines
-            .filter(l => markerOf(l) === null)
-            .map(sanitizeLinePrefix)
-            .join('\n');
-        await writeFullFile(filePath, cleanContent);
-        return;
-    }
-
-    const updatedLines = applyLineOperations(currentLines, operations);
-    await writeFullFile(filePath, updatedLines.join('\n'));
+    return targetLine;
 }
 
 function parseLineOperations(lines: string[]): LineOperation[] {
@@ -347,55 +180,226 @@ function parseLineOperations(lines: string[]): LineOperation[] {
             });
             continue;
         }
-
         i++;
     }
 
     return ops;
 }
 
-function sanitizeLinePrefix(line: string): string {
-    return line.replace(/^\s*\d+\s*\|\s?/, '');
-}
+// FILE: src/patcher/aiPatcher.ts
 
 function applyLineOperations(currentLines: string[], ops: LineOperation[]): string[] {
     const result = [...currentLines];
 
+    // مرتب‌سازی معکوس: اعمال تغییرات از پایین‌ترین خط به بالاترین خط
     ops.sort((a, b) => {
         if (b.startLine !== a.startLine) {
             return b.startLine - a.startLine;
         }
+        // اگر در یک خط هم Insert و هم Replace بود، اول Insert اعمال شود
         if (a.type === 'insert_after' && b.type !== 'insert_after') return -1;
         if (b.type === 'insert_after' && a.type !== 'insert_after') return 1;
         return 0;
     });
 
     for (const op of ops) {
-        const startIdx = Math.max(0, op.startLine - 1);
-        const endIdx = Math.max(startIdx, op.endLine - 1);
-
         if (op.type === 'delete') {
+            const startIdx = Math.max(0, op.startLine - 1);
+            const endIdx = Math.max(startIdx, op.endLine - 1);
             if (startIdx < result.length) {
                 const deleteCount = Math.min(result.length - startIdx, endIdx - startIdx + 1);
                 result.splice(startIdx, deleteCount);
             }
-        } else if (op.type === 'replace') {
+        } 
+        else if (op.type === 'replace') {
+            const adjustedStartLine = findSafeAnchorLine(result, op.startLine, op.lines);
+            const lineDiff = adjustedStartLine - op.startLine;
+            const adjustedEndLine = op.endLine + lineDiff;
+
+            const startIdx = Math.max(0, adjustedStartLine - 1);
+            const endIdx = Math.max(startIdx, adjustedEndLine - 1);
+
             if (startIdx < result.length) {
                 const deleteCount = Math.min(result.length - startIdx, endIdx - startIdx + 1);
+                // حذف دقیق بازه مشخص شده و جایگزینی کد جدید
                 result.splice(startIdx, deleteCount, ...op.lines);
             } else {
                 result.push(...op.lines);
             }
-        } else if (op.type === 'insert_after') {
-            const insertIdx = Math.min(result.length, op.startLine);
+        } 
+        else if (op.type === 'insert_after') {
+            // برای INSERT_AFTER: تضمین ۱۰۰٪ عدم حذف حتی یک خط (deleteCount = 0)
+            // خط 0 یعنی ابتدای فایل (ایندکس 0)
+            // خط 321 یعنی بعد از خط 321 (ایندکس 321)
+            const insertIdx = op.startLine === 0 ? 0 : Math.min(result.length, op.startLine);
             result.splice(insertIdx, 0, ...op.lines);
-        } else if (op.type === 'insert_before') {
-            const insertIdx = Math.min(result.length, startIdx);
+        } 
+        else if (op.type === 'insert_before') {
+            // برای INSERT_BEFORE: درج دقیقاً قبل از خط اعلام شده
+            const insertIdx = Math.max(0, Math.min(result.length, op.startLine - 1));
             result.splice(insertIdx, 0, ...op.lines);
         }
     }
 
     return result;
+}
+
+function extractCodeBlocks(text: string): CodeBlockPatch[] {
+    const blocks: CodeBlockPatch[] = [];
+
+    // ۱. بررسی با مارک‌داون ```
+    const blockRegex = /```(?:[a-zA-Z0-9_-]+)?\r?\n([\s\S]*?)```/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = blockRegex.exec(text)) !== null) {
+        const code = match[1];
+        let filePath = '';
+        let isNewFile = false;
+
+        for (const line of code.split(/\r?\n/)) {
+            const marker = markerOf(line);
+            if (marker && marker.payload && (marker.type === 'file' || marker.payload.includes('.'))) {
+                filePath = sanitizeFilePath(marker.payload);
+                break;
+            }
+        }
+
+        if (/NEW\s+FILE/i.test(code)) {
+            isNewFile = true;
+        }
+
+        blocks.push({ filePath, content: code, isNewFile });
+    }
+
+    // ۲. بررسی متن خام پلی‌گراند (بدون ```)
+    if (blocks.length === 0) {
+        const lines = text.split(/\r?\n/);
+        let currentPath = '';
+        let currentIsNew = false;
+        let currentLines: string[] = [];
+
+        for (const line of lines) {
+            const marker = markerOf(line);
+            if (marker && marker.type === 'file' && marker.payload) {
+                if (currentLines.length > 0) {
+                    blocks.push({
+                        filePath: currentPath,
+                        content: currentLines.join('\n'),
+                        isNewFile: currentIsNew
+                    });
+                    currentLines = [];
+                }
+                currentPath = sanitizeFilePath(marker.payload);
+                currentIsNew = false;
+                continue;
+            }
+
+            if (/NEW\s+FILE/i.test(line)) {
+                currentIsNew = true;
+            }
+
+            currentLines.push(line);
+        }
+
+        if (currentLines.length > 0) {
+            blocks.push({
+                filePath: currentPath,
+                content: currentLines.join('\n'),
+                isNewFile: currentIsNew
+            });
+        }
+    }
+
+    return blocks;
+}
+
+export async function parseAndApplyAiResponse(
+    aiResponse: string,
+    workspaceRoot: string
+): Promise<{ successCount: number; errors: string[] }> {
+    const blocks = extractCodeBlocks(aiResponse);
+    const errors: string[] = [];
+    let successCount = 0;
+
+    if (blocks.length === 0) {
+        errors.push('هیچ دستور تغییر یا فایلی در متن ورودی یافت نشد!');
+        return { successCount: 0, errors };
+    }
+
+    for (const block of blocks) {
+        try {
+            let targetPath = sanitizeFilePath(block.filePath);
+
+            if (!targetPath) {
+                if (vscode.window.activeTextEditor) {
+                    targetPath = path.relative(workspaceRoot, vscode.window.activeTextEditor.document.fileName);
+                } else {
+                    errors.push('مسیر فایل مشخص نیست. لطفاً فایلی را در ادیتور باز کنید یا خط // FILE: path را قرار دهید.');
+                    continue;
+                }
+            }
+
+            const absolutePath = path.isAbsolute(targetPath)
+                ? path.resolve(targetPath)
+                : path.resolve(workspaceRoot, targetPath);
+
+            if (!isInsideWorkspace(absolutePath, workspaceRoot)) {
+                errors.push(`مسیر فایل خارج از پوشه پروژه است: ${targetPath}`);
+                continue;
+            }
+
+            await applyPatchToFile(absolutePath, block.content, block.isNewFile);
+            successCount++;
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            errors.push(`خطا در اعمال پچ روی ${block.filePath || 'فایل'}: ${msg}`);
+        }
+    }
+
+    return { successCount, errors };
+}
+
+function isInsideWorkspace(targetPath: string, workspaceRoot: string): boolean {
+    const resolvedTarget = path.resolve(targetPath).toLowerCase();
+    const resolvedRoot = path.resolve(workspaceRoot).toLowerCase();
+    const rel = path.relative(resolvedRoot, resolvedTarget);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+async function applyPatchToFile(filePath: string, patchContent: string, isNewFile: boolean): Promise<void> {
+    const fileExists = fs.existsSync(filePath);
+    const rawLines = patchContent.split(/\r?\n/);
+    const lines = rawLines.filter(l => !isMetadataMarker(l));
+
+    if (!fileExists || isNewFile) {
+        const cleanContent = lines
+            .filter(l => markerOf(l) === null)
+            .map(sanitizeLinePrefix)
+            .join('\n');
+        await writeFullFile(filePath, cleanContent);
+        return;
+    }
+
+    let currentContent = '';
+    try {
+        currentContent = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+        currentContent = '';
+    }
+    const currentLines = currentContent.split(/\r?\n/);
+    const operations = parseLineOperations(lines);
+
+    if (operations.length === 0) {
+        const cleanContent = lines
+            .filter(l => markerOf(l) === null)
+            .map(sanitizeLinePrefix)
+            .join('\n');
+        await writeFullFile(filePath, cleanContent);
+        return;
+    }
+
+    const updatedLines = applyLineOperations(currentLines, operations);
+    await writeFullFile(filePath, updatedLines.join('\n'));
 }
 
 async function writeFullFile(filePath: string, content: string): Promise<void> {
@@ -414,22 +418,18 @@ async function writeFullFile(filePath: string, content: string): Promise<void> {
     }
 
     const doc = await vscode.workspace.openTextDocument(uri);
+    if (doc.getText() === content) return;
 
-    if (doc.getText() === content) {
-        return;
-    }
+    // ۱. باز کردن فایل در تب ادیتور تا کاربر تغییرات را ببیند
+    await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: false });
 
-    const fullRange =
-        doc.lineCount === 0
-            ? new vscode.Range(0, 0, 0, 0)
-            : new vscode.Range(
-                  0,
-                  0,
-                  doc.lineAt(doc.lineCount - 1).range.end.line,
-                  doc.lineAt(doc.lineCount - 1).range.end.character
-              );
+    const fullRange = doc.lineCount === 0
+        ? new vscode.Range(0, 0, 0, 0)
+        : new vscode.Range(0, 0, doc.lineAt(doc.lineCount - 1).range.end.line, doc.lineAt(doc.lineCount - 1).range.end.character);
 
     const edit = new vscode.WorkspaceEdit();
     edit.replace(uri, fullRange, content);
+    
+    // ۲. اعمال ادیت در حافظه بدون ذخیره خودکار (تا خودتان بتوانید Review کرده و با Ctrl+S سیو کنید)
     await vscode.workspace.applyEdit(edit);
 }
