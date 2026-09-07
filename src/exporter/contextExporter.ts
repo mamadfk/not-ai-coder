@@ -11,12 +11,12 @@ const DEFAULT_EXCLUDE_FOLDERS = [
     'node_modules', '.git', '.vscode', '.idea', '.vscode-test',
     'dist', 'build', 'out', '.next', '.nuxt', '.cache',
     'coverage', '__pycache__', '.pytest_cache', '.venv', 'venv',
-    'env', '.env', '.terraform', 'target', 'bin', 'obj'
+    'env', '.env', '.terraform', 'target', 'bin', 'obj', '.dart_tool'
 ];
 
 const DEFAULT_EXCLUDE_FILE_GLOBS = [
     '*.log', '*.min.js', '*.min.css', '*.map',
-    '*.lock', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yarn',
+    '*.lock', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yarn', 'pubspec.lock',
     '*.png', '*.jpg', '*.jpeg', '*.gif', '*.ico', '*.bmp', '*.webp',
     '*.pdf', '*.zip', '*.tar', '*.gz', '*.rar', '*.7z',
     '*.exe', '*.dll', '*.so', '*.dylib', '*.class', '*.jar', '*.wasm',
@@ -114,39 +114,35 @@ export async function generateProjectContext(
     const files = await getWorkspaceFiles(rootPath, includedFolders, settings);
     const treeStructure = buildTreeString(rootPath, files);
     
- // FILE: src/exporter/contextExporter.ts
-
     let context = `==================================================\n`;
     context += `   AI SYSTEM PROMPT & INSTRUCTIONS (دستورالعمل جامع و دقیق هوش مصنوعی)\n`;
     context += `==================================================\n\n`;
     context += `شما یک مهندس ارشد نرم‌افزار هستید. سورس‌کد کامل پروژه با شماره خط در ادامه آمده است.\n`;
-    context += `تغییرات شما توسط یک سیستم پچ خودکار اعمال می‌شود، بنابراین رعایت دقیق شماره خطوط و فرمت ۱۰۰٪ الزامی است.\n\n`;
+    context += `تغییرات شما توسط یک سیستم پچ خودکار اعمال می‌شود، بنابراین رعایت دقیق فرمت ۱۰۰٪ الزامی است.\n\n`;
 
-    context += `🚨 **قوانین حیاتی برای دستورات تغییر (بسیار مهم)**:\n\n`;
-
-    context += `۱. **دستور // REPLACE: X-Y (جایگزینی یا ویرایش)**:\n`;
-    context += `   - اگر می‌خواهید حتی یک خط موجود در فایل را تغییر دهید، حتماً از REPLACE استفاده کنید.\n`;
-    context += `   - مثال: برای ویرایش خطوط 15 تا 20 بنویسید: \`// REPLACE: 15-20\`\n`;
-    context += `   - مثال برای یک تک خط: \`// REPLACE: 321\` (خود خط 321 حذف و کد جدید جایگزین آن می‌شود).\n\n`;
-
-    context += `۲. **دستور // INSERT_AFTER: X (درج بعد از یک خط - بدون حذف)**:\n`;
-    context += `   - این دستور خط X را **دست‌نخورده نگه می‌دارد** و کدهای جدید را از خط X+1 اضافه می‌کند.\n`;
-    context += `   - ⚠️ **هشدار حیاتی سینتکس**: اگر می‌خواهید کدی را **داخل** یک تابع، کلاس یا بلاک (قبل از بسته شدن \`}\` یا \`</div>\`) اضافه کنید، هرگز روی خط آکولاد پایانی INSERT_AFTER نزنید! چون کد به بیرون از تابع می‌افتد. در این حالت باید روی خط ماقبل‌آخر INSERT_AFTER بزنید یا کل بدنه را REPLACE کنید.\n`;
-    context += `   - مثال: برای درج کد در ابتدای فایل بنویسید: \`// INSERT_AFTER: 0\`\n\n`;
-
-    context += `۳. **دستور // DELETE: X-Y (حذف خطوط)**:\n`;
-    context += `   - برای حذف خطوط بدون نوشتن کد جایگزین: \`// DELETE: 50-55\`\n\n`;
-
-    context += `۴. **عدم تکرار شماره خط در کدها**:\n`;
-    context += `   - در کدهای ارسالی خود اصلاً پیشوند شماره خط مثل \`321 | \` نگذارید و فقط کد خام را بنویسید.\n\n`;
-
-    context += `📌 **فرمت استاندارد خروجی**:\n`;
-    context += `هر فایل را در یک بلوک مجزا با مسیر دقیق ارسال کنید:\n`;
+    context += `🚨 **فرمت اصلی تغییرات — SEARCH/REPLACE (بسیار مهم)**:\n\n`;
+    context += `هر تغییر را به این شکل ارسال کنید (کد قدیمی عیناً از فایل، کد جدید جایگزین):\n\n`;
     context += `\`\`\`زبان\n`;
     context += `// FILE: مسیر_دقیق_فایل\n`;
-    context += `// REPLACE: خط_شروع-خط_پایان\n`;
-    context += `کد اصلاح شده...\n`;
+    context += `<<<<<<< SEARCH\n`;
+    context += `کد قدیمی — دقیقاً همان‌طور که در فایل است (بدون پیشوند شماره خط)\n`;
+    context += `=======\n`;
+    context += `کد جدید\n`;
+    context += `>>>>>>> REPLACE\n`;
     context += `\`\`\`\n\n`;
+    context += `**قوانین حیاتی**:\n\n`;
+    context += `۱. بخش SEARCH باید **کپی دقیق و حرف‌به‌حرف** کد موجود در فایل باشد — هرگز پیشوند شماره خط (مثل \`12 | \`) در آن ننویسید.\n`;
+    context += `۲. برای چند تغییر در یک فایل، چند بلاک SEARCH/REPLACE پشت سر هم بعد از یک خط \`// FILE:\` بنویسید.\n`;
+    context += `۳. حداقل ۱ تا ۳ خط زمینه به SEARCH اضافه کنید تا متن جستجو در کل فایل **یکتا** باشد (از انتخاب خطوط عمومی و تکراری مثل \`}\` یا \`)\` به‌تنهایی خودداری کنید).\n`;
+    context += `۴. برای ایجاد فایل جدید: خط \`// FILE: مسیر\` و سپس خط \`// NEW FILE\` و بعد کل محتوای فایل بدون SEARCH/REPLACE.\n\n`;
+
+    context += `⚙️ **فرمت جایگزین مبتنی بر شماره خط (فقط در صورت درخواست صریح کاربر)**:\n\n`;
+    context += `- \`// REPLACE: X-Y\` جایگزینی خطوط (تک‌خط: \`// REPLACE: 321\`)، \`// INSERT_AFTER: X\` درج بعد از خط X، \`// INSERT_BEFORE: X\` درج قبل از خط X، \`// DELETE: X-Y\` حذف خطوط.\n`;
+    context += `- ⚠️ تمام شماره خطوط باید بر اساس **فایل اصلی** (خروجی همین پرامپت) باشند؛ سیستم خودش ترتیب اعمال را مدیریت می‌کند.\n\n`;
+
+    context += `📌 **قوانین عمومی کد**:\n`;
+    context += `- هیچ پیشوند شماره خط در کد خروجی نگذارید؛ فقط کد خام.\n`;
+    context += `- کد خروجی باید کامل و بدون placeholder یا \`...\` باشد.\n\n`;
 
     context += `==================================================\n`;
     context += `   PROJECT STRUCTURE (ساختار پروژه)\n`;

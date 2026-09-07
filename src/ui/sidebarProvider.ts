@@ -42,7 +42,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleGetFolders(webviewView: vscode.WebviewView) {
-        const rootPath = this._requireRootPath();
+        const rootPath = await this._requireRootPath();
         if (!rootPath) {
             webviewView.webview.postMessage({ type: 'folderList', folders: [] });
             return;
@@ -52,7 +52,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleCopyContext(includedFolders: string[]) {
-        const rootPath = this._requireRootPath();
+        const rootPath = await this._requireRootPath();
         if (!rootPath) return;
 
         try {
@@ -70,7 +70,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleCopyStructure(includedFolders: string[]) {
-        const rootPath = this._requireRootPath();
+        const rootPath = await this._requireRootPath();
         if (!rootPath) return;
 
         try {
@@ -83,7 +83,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleCopyStructureAndSource(includedFolders: string[]) {
-        const rootPath = this._requireRootPath();
+        const rootPath = await this._requireRootPath();
         if (!rootPath) return;
 
         try {
@@ -96,7 +96,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     private async _handleApplyAiResponse(aiResponse: string) {
-        const rootPath = this._requireRootPath();
+        const rootPath = await this._requireRootPath();
         if (!rootPath) return;
 
         if (!aiResponse || !aiResponse.trim()) {
@@ -120,16 +120,25 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Returns the first workspace folder's fsPath, or undefined (after showing
-     * an error) when no project is open. Centralises the repeated guard.
+     * Returns the target workspace folder's fsPath, or undefined (after showing
+     * an error) when no project is open. In multi-root workspaces the user is
+     * asked which folder to target (هم‌راستا با رفتار کامندها).
      */
-    private _requireRootPath(): string | undefined {
+    private async _requireRootPath(): Promise<string | undefined> {
         const folders = vscode.workspace.workspaceFolders;
         if (!folders || folders.length === 0) {
             vscode.window.showErrorMessage('هیچ پوشه یا پروژه‌ای در VS Code باز نیست!');
             return undefined;
         }
-        return folders[0].uri.fsPath;
+
+        if (folders.length === 1) {
+            return folders[0].uri.fsPath;
+        }
+
+        const picked = await vscode.window.showWorkspaceFolderPick({
+            placeHolder: 'پروژه‌ای که می‌خواهید عملیات روی آن انجام شود را انتخاب کنید:'
+        });
+        return picked?.uri.fsPath;
     }
 
     private _getHtmlForWebview(webview: vscode.Webview): string {
