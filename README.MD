@@ -67,8 +67,8 @@
 هوش مصنوعی با دستورالعمل داخلی این افزونه، به دو شیوه کد تحویل می‌دهد که هر دو به‌صورت ۱۰۰٪ خودکار شناسایی و اعمال می‌شوند:
 
 ### فرمت ۱: SEARCH / REPLACE (پیش‌فرض و استاندارد)
-```typescript
-// FILE: src/services/user.ts
+
+
 <<<<<<< SEARCH
 export function getUser(id: string) {
     return db.users.find(id);
