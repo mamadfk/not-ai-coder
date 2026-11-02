@@ -1,18 +1,46 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
-import { generateProjectContext, generateProjectStructureOnly, generateProjectStructureAndSource, getRootFolderList } from '../exporter/contextExporter';
+import {
+    generateProjectContext,
+    generateProjectStructureOnly,
+    generateProjectStructureAndSource,
+    generatePatchedFilesContext,
+    getRootFolderList
+} from '../exporter/contextExporter';
 import { parseAndApplyAiResponse } from '../patcher/aiPatcher';
 
 export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'aiDiffAssistant.sidebarView';
+    private _view?: vscode.WebviewView;
+    private readonly _patchedFiles = new Set<string>();
 
     constructor(private readonly _extensionUri: vscode.Uri) {}
+
+    public addPatchedFiles(files: string[]) {
+        for (const f of files) {
+            if (f) {
+                this._patchedFiles.add(f);
+            }
+        }
+        this._sendPatchedFiles();
+    }
+
+    private _sendPatchedFiles() {
+        if (this._view) {
+            this._view.webview.postMessage({
+                type: 'patchedFilesList',
+                files: Array.from(this._patchedFiles)
+            });
+        }
+    }
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken
     ) {
+        this._view = webviewView;
+
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [this._extensionUri]
@@ -24,6 +52,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
             switch (message.type) {
                 case 'getFolders':
                     await this._handleGetFolders(webviewView);
+                    this._sendPatchedFiles();
                     break;
                 case 'copyContext':
                     await this._handleCopyContext(message.includedFolders || []);
@@ -36,6 +65,12 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
                     break;
                 case 'applyAiResponse':
                     await this._handleApplyAiResponse(message.value);
+                    break;
+                case 'copyPatchedFiles':
+                    await this._handleCopyPatchedFiles();
+                    break;
+                case 'resetPatchedFiles':
+                    this._handleResetPatchedFiles();
                     break;
             }
         });
@@ -105,7 +140,11 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         try {
-            const { successCount, errors } = await parseAndApplyAiResponse(aiResponse, rootPath);
+            const { successCount, errors, patchedFiles } = await parseAndApplyAiResponse(aiResponse, rootPath);
+
+            if (patchedFiles.length > 0) {
+                this.addPatchedFiles(patchedFiles);
+            }
 
             if (successCount > 0) {
                 vscode.window.showInformationMessage(`تغییرات با موفقیت در ${successCount} فایل / بلوک کد اعمال شد.`);
@@ -117,6 +156,31 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
         } catch (err: unknown) {
             vscode.window.showErrorMessage(`خطا در اجرای پچ: ${errorMessage(err)}`);
         }
+    }
+
+    private async _handleCopyPatchedFiles() {
+        const rootPath = await this._requireRootPath();
+        if (!rootPath) return;
+
+        if (this._patchedFiles.size === 0) {
+            vscode.window.showWarningMessage('هنوز هیچ فایل پچ‌شده‌ای در لیست وجود ندارد!');
+            return;
+        }
+
+        try {
+            const files = Array.from(this._patchedFiles);
+            const contextText = await generatePatchedFilesContext(rootPath, files);
+            await vscode.env.clipboard.writeText(contextText);
+            vscode.window.showInformationMessage(`محتوای کامل ${files.length} اسکریپت پچ‌شده در کلیپ‌بورد کپی شد!`);
+        } catch (err: unknown) {
+            vscode.window.showErrorMessage(`خطا در کپی تغییرات پچ: ${errorMessage(err)}`);
+        }
+    }
+
+    private _handleResetPatchedFiles() {
+        this._patchedFiles.clear();
+        this._sendPatchedFiles();
+        vscode.window.showInformationMessage('لیست فایل‌های پچ‌شده ریست شد.');
     }
 
     /**
@@ -159,7 +223,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="${csp}">
-    <title>AI Diff Assistant</title>
+    <title>Not AI Coder</title>
     <style>
         body {
             font-family: var(--vscode-font-family, system-ui, sans-serif);
@@ -257,6 +321,51 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
             background-color: var(--vscode-statusBarItem-remoteBackground, #0e639c);
             margin-bottom: 0;
         }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .card-header h3 {
+            margin-bottom: 0;
+        }
+        .badge {
+            background-color: var(--vscode-badge-background, #4d4d4d);
+            color: var(--vscode-badge-foreground, #ffffff);
+            font-size: 0.75em;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        .patched-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.82em;
+            padding: 3px 4px;
+            border-bottom: 1px solid var(--vscode-widget-border, rgba(128,128,128,0.2));
+            word-break: break-all;
+        }
+        .patched-item:last-child {
+            border-bottom: none;
+        }
+        .btn-row {
+            display: flex;
+            gap: 8px;
+        }
+        .btn-row button {
+            margin-bottom: 0;
+        }
+        .btn-reset {
+            flex: 0 0 34%;
+            background-color: var(--vscode-button-secondaryBackground, #3a3d41);
+            color: var(--vscode-button-secondaryForeground, #ffffff);
+        }
+        .btn-reset:hover {
+            background-color: var(--vscode-errorForeground, #f48771);
+            color: #ffffff;
+        }
         textarea {
             width: 100%;
             height: 150px;
@@ -306,8 +415,23 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
         <button id="btnApply" class="btn-apply" style="margin-top: 10px;">🚀 اعمال هوشمند تغییرات (Apply Patch)</button>
     </div>
 
+    <div class="card">
+        <div class="card-header">
+            <h3>📑 ۳. اسکریپت‌های پچ‌شده</h3>
+            <span id="patchedCountBadge" class="badge">0</span>
+        </div>
+        <p>فایل‌هایی که پچ می‌شوند در این لیست می‌مانند تا بتوانید محتوای کامل آن‌ها را برای بررسی مجدد کپی کنید:</p>
+        <div id="patchedFilesContainer" class="folder-menu">
+            <span style="font-size:0.8em; opacity:0.6;">هنوز پچی اعمال نشده است.</span>
+        </div>
+        <div class="btn-row">
+            <button id="btnCopyPatched">📋 کپی تغییرات پچ</button>
+            <button id="btnResetPatched" class="btn-reset">🗑️ ریست</button>
+        </div>
+    </div>
+
     <div class="footer">
-        پلاگین مدیریت هوشمند پرامپت و دیف کد
+        Not AI Coder — مدیریت هوشمند پرامپت و دیف کد
     </div>
 
     <script nonce="${nonce}">
@@ -347,10 +471,36 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
             });
         }
 
+        function renderPatchedFiles(files) {
+            const container = document.getElementById('patchedFilesContainer');
+            const badge = document.getElementById('patchedCountBadge');
+            container.innerHTML = '';
+            const list = Array.isArray(files) ? files : [];
+            badge.textContent = String(list.length);
+
+            if (list.length === 0) {
+                const span = document.createElement('span');
+                span.style.fontSize = '0.8em';
+                span.style.opacity = '0.6';
+                span.textContent = 'هنوز پچی اعمال نشده است.';
+                container.appendChild(span);
+                return;
+            }
+
+            list.forEach(file => {
+                const div = document.createElement('div');
+                div.className = 'patched-item';
+                div.textContent = '📄 ' + file;
+                container.appendChild(div);
+            });
+        }
+
         window.addEventListener('message', event => {
             const message = event.data;
             if (message.type === 'folderList') {
                 renderFolders(message.folders);
+            } else if (message.type === 'patchedFilesList') {
+                renderPatchedFiles(message.files);
             }
         });
 
@@ -387,6 +537,14 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
         document.getElementById('btnApply').addEventListener('click', () => {
             const val = document.getElementById('aiText').value;
             vscode.postMessage({ type: 'applyAiResponse', value: val });
+        });
+
+        document.getElementById('btnCopyPatched').addEventListener('click', () => {
+            vscode.postMessage({ type: 'copyPatchedFiles' });
+        });
+
+        document.getElementById('btnResetPatched').addEventListener('click', () => {
+            vscode.postMessage({ type: 'resetPatchedFiles' });
         });
     </script>
 </body>

@@ -1,8 +1,8 @@
 {
-  "name": "ai-code-diff-assistant",
-  "displayName": "AI Code Diff Assistant",
-  "description": "VS Code extension for efficient AI playground prompt workflow & incremental diff patching.",
-  "version": "0.0.12",
+  "name": "not-ai-coder",
+  "displayName": "Not AI Coder",
+  "description": "Not AI Coder — VS Code extension for efficient AI playground prompt workflow & incremental diff patching.",
+  "version": "0.0.13",
   "publisher": "mamadfakoor",
   "license": "MIT",
   "engines": {
@@ -21,22 +21,22 @@
     "commands": [
       {
         "command": "aiDiffAssistant.copyContext",
-        "title": "AI Assistant: Copy Project Context & System Prompt"
+        "title": "Not AI Coder: Copy Project Context & System Prompt"
       },
       {
         "command": "aiDiffAssistant.copyStructure",
-        "title": "AI Assistant: Copy Project Structure Only"
+        "title": "Not AI Coder: Copy Project Structure Only"
       },
       {
         "command": "aiDiffAssistant.applyPatch",
-        "title": "AI Assistant: Apply AI Code Response"
+        "title": "Not AI Coder: Apply AI Code Response"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "ai-diff-assistant-view",
-          "title": "AI Diff Assistant",
+          "title": "Not AI Coder",
           "icon": "$(sparkle)"
         }
       ]
@@ -46,12 +46,12 @@
         {
           "type": "webview",
           "id": "aiDiffAssistant.sidebarView",
-          "name": "AI Diff Assistant"
+          "name": "Not AI Coder"
         }
       ]
     },
     "configuration": {
-      "title": "AI Diff Assistant",
+      "title": "Not AI Coder",
       "properties": {
         "aiDiffAssistant.excludeFolders": {
           "type": "array",

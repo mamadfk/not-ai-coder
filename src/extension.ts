@@ -55,7 +55,11 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        const { successCount, errors } = await parseAndApplyAiResponse(clipboardText, rootPath);
+        const { successCount, errors, patchedFiles } = await parseAndApplyAiResponse(clipboardText, rootPath);
+
+        if (patchedFiles.length > 0) {
+            sidebarProvider.addPatchedFiles(patchedFiles);
+        }
 
         if (successCount > 0) {
             vscode.window.showInformationMessage(`تغییرات کدهای کپی شده با موفقیت روی ${successCount} بلوک/فایل اعمال شد.`);

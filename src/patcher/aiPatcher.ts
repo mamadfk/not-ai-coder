@@ -532,14 +532,15 @@ async function applySearchReplacePatch(
 export async function parseAndApplyAiResponse(
     aiResponse: string,
     workspaceRoot: string
-): Promise<{ successCount: number; errors: string[] }> {
+): Promise<{ successCount: number; errors: string[]; patchedFiles: string[] }> {
     const blocks = extractCodeBlocks(aiResponse);
     const errors: string[] = [];
+    const patchedSet = new Set<string>();
     let successCount = 0;
 
     if (blocks.length === 0) {
         errors.push('هیچ دستور تغییر یا فایلی در متن ورودی یافت نشد!');
-        return { successCount: 0, errors };
+        return { successCount: 0, errors, patchedFiles: [] };
     }
 
     for (const block of blocks) {
@@ -564,15 +565,21 @@ export async function parseAndApplyAiResponse(
                 continue;
             }
 
+            const relPath = path.relative(workspaceRoot, absolutePath).replace(/\\/g, '/');
+
             if (block.searchReplaceEdits && block.searchReplaceEdits.length > 0) {
                 const srResult = await applySearchReplacePatch(absolutePath, block.searchReplaceEdits, block.isNewFile);
                 if (srResult.errors.length > 0) {
                     errors.push(...srResult.errors.map(e => `${targetPath}: ${e}`));
                 }
-                if (srResult.applied) successCount++;
+                if (srResult.applied) {
+                    successCount++;
+                    patchedSet.add(relPath);
+                }
             } else {
                 await applyPatchToFile(absolutePath, block.content, block.isNewFile);
                 successCount++;
+                patchedSet.add(relPath);
             }
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -580,7 +587,7 @@ export async function parseAndApplyAiResponse(
         }
     }
 
-    return { successCount, errors };
+    return { successCount, errors, patchedFiles: Array.from(patchedSet) };
 }
 
 function isInsideWorkspace(targetPath: string, workspaceRoot: string): boolean {

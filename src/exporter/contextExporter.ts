@@ -196,6 +196,51 @@ export async function generateProjectStructureOnly(
     return context;
 }
 
+export async function generatePatchedFilesContext(
+    rootPath: string,
+    patchedRelativeFiles: string[]
+): Promise<string> {
+    const fullPaths = patchedRelativeFiles
+        .map(rel => path.resolve(rootPath, rel))
+        .filter(fullPath => isDocumentOpenInEditor(fullPath) || fs.existsSync(fullPath));
+
+    const treeStructure = buildTreeString(rootPath, fullPaths);
+
+    let context = `==================================================\n`;
+    context += `   PATCHED FILES CONTEXT (محتوای کامل فایل‌های پچ‌شده جهت بررسی)\n`;
+    context += `==================================================\n\n`;
+    context += `فایل‌های زیر پس از اعمال پچ به‌روزرسانی شده‌اند. محتوای کامل و جدید آن‌ها همراه با شماره خط در ادامه آمده است:\n\n`;
+    context += treeStructure + `\n\n`;
+
+    context += `==================================================\n`;
+    context += `   UPDATED SOURCE FILES (سورس کامل اسکریپت‌های پچ‌شده با شماره خط)\n`;
+    context += `==================================================\n\n`;
+
+    appendFileContents(rootPath, fullPaths, ctx => { context += ctx; });
+
+    return context;
+}
+
+function isSameFilePath(a: string, b: string): boolean {
+    const normA = vscode.Uri.file(a).fsPath;
+    const normB = vscode.Uri.file(b).fsPath;
+    return process.platform === 'win32'
+        ? normA.toLowerCase() === normB.toLowerCase()
+        : normA === normB;
+}
+
+function isDocumentOpenInEditor(filePath: string): boolean {
+    return vscode.workspace.textDocuments.some(doc => isSameFilePath(doc.uri.fsPath, filePath));
+}
+
+function readLatestFileContent(filePath: string): string {
+    const openDoc = vscode.workspace.textDocuments.find(doc => isSameFilePath(doc.uri.fsPath, filePath));
+    if (openDoc) {
+        return openDoc.getText();
+    }
+    return fs.readFileSync(filePath, 'utf-8');
+}
+
 function appendFileContents(
     rootPath: string,
     files: string[],
@@ -204,7 +249,7 @@ function appendFileContents(
     for (const file of files) {
         const relPath = path.relative(rootPath, file).replace(/\\/g, '/');
         try {
-            const content = fs.readFileSync(file, 'utf-8');
+            const content = readLatestFileContent(file);
             append(`--- FILE: ${relPath} ---\n`);
             const lines = content.split(/\r?\n/);
             lines.forEach((line, index) => {

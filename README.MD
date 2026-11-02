@@ -1,7 +1,7 @@
-# ⚡ AI Code Diff Assistant
+# ⚡ Not AI Coder
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mamadfakoor/ai-code-diff-assistant/main/icon.png" alt="AI Code Diff Assistant" width="128" height="128">
+  <img src="https://raw.githubusercontent.com/mamadfakoor/ai-code-diff-assistant/main/icon.png" alt="Not AI Coder" width="128" height="128">
 </p>
 
 <p align="center">
@@ -18,9 +18,9 @@
 
 ---
 
-## 💡 AI Code Diff Assistant چیست؟
+## 💡 Not AI Coder چیست؟
 
-**AI Code Diff Assistant** یک افزونه برای **VS Code** است که به شما اجازه می‌دهد بدون نیاز به اشتراک‌های گران‌قیمت ابزارهایی مثل Cursor، از AI Playgroundهای مختلف برای تحلیل و تغییر کد پروژه استفاده کنید.
+**Not AI Coder** یک افزونه برای **VS Code** است که به شما اجازه می‌دهد بدون نیاز به اشتراک‌های گران‌قیمت ابزارهایی مثل Cursor، از AI Playgroundهای مختلف برای تحلیل و تغییر کد پروژه استفاده کنید.
 
 افزونه، **ساختار و سورس پروژه را به یک Context استاندارد تبدیل می‌کند**، آن را برای استفاده در سرویس‌های AI آماده می‌کند و سپس پاسخ AI را به‌صورت **Patch** روی فایل‌های پروژه اعمال می‌کند.
 
@@ -76,7 +76,7 @@
 
 ### 1. 📋 ساخت Context پروژه
 
-1. سایدبار **AI Diff Assistant** را از نوار کناری VS Code باز کنید.
+1. سایدبار **Not AI Coder** را از نوار کناری VS Code باز کنید.
 2. پوشه‌هایی را که می‌خواهید AI به آن‌ها دسترسی داشته باشد انتخاب کنید.
 3. روی **Copy Prompt + Structure + Source Code** کلیک کنید.
 
@@ -103,7 +103,7 @@ AI باید تغییرات موردنیاز را در یکی از فرمت‌ه�
 یا:
 
 - `Ctrl + Shift + P` را بزنید.
-- دستور **AI Assistant: Apply AI Code Response** را اجرا کنید.
+- دستور **Not AI Coder: Apply AI Code Response** را اجرا کنید.
 
 > 💡 تغییرات مستقیماً در فایل‌ها اعمال می‌شوند، اما برای کنترل بیشتر می‌توانید آن‌ها را قبل از ذخیره در VS Code بررسی کنید.
 
@@ -203,9 +203,9 @@ out/
 
 | Command | کاربرد |
 |---|---|
-| `AI Assistant: Copy Project Context & System Prompt` | کپی Context، ساختار پروژه و System Prompt |
-| `AI Assistant: Copy Project Structure Only` | کپی فقط ساختار درختی پروژه |
-| `AI Assistant: Apply AI Code Response` | اعمال Patch دریافت‌شده از AI |
+| `Not AI Coder: Copy Project Context & System Prompt` | کپی Context، ساختار پروژه و System Prompt |
+| `Not AI Coder: Copy Project Structure Only` | کپی فقط ساختار درختی پروژه |
+| `Not AI Coder: Apply AI Code Response` | اعمال Patch دریافت‌شده از AI |
 
 ---
 
@@ -226,7 +226,7 @@ out/
 
 ## 🔐 امنیت و کنترل
 
-**AI Code Diff Assistant خودش تصمیم نمی‌گیرد که تغییرات را بدون کنترل شما ذخیره کند.**
+**Not AI Coder خودش تصمیم نمی‌گیرد که تغییرات را بدون کنترل شما ذخیره کند.**
 
 تغییرات در ادیتور VS Code باز می‌شوند و شما می‌توانید:
 
